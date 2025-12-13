@@ -68,17 +68,21 @@ jobs:
             docker network prune -f
 
             minikube delete || true
-            minikube start --driver=docker
+            minikube start --driver=docker --memory=2048
 
             echo "===== DISK USAGE (AFTER) ====="
             df -h
+
+            echo "📦 Ensuring prod namespace exists..."
+            minikube kubectl -- create namespace prod --dry-run=client -o yaml | \
+            minikube kubectl -- apply -f -
 
             echo "🚀 Deploying application..."
             cd motopp-final-exam
             git pull origin main
 
-            kubectl rollout restart deployment/motopp -n prod
-            kubectl rollout status deployment/motopp -n prod
+            minikube kubectl -- rollout restart deployment/motopp -n prod
+            minikube kubectl -- rollout status deployment/motopp -n prod
 
       - name: Post-Deploy Smoke Test
         run: |
