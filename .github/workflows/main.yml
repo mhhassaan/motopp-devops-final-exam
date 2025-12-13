@@ -76,6 +76,9 @@ jobs:
               minikube update-context
             fi
 
+            echo "🚀 Applying Kubernetes configurations..."
+            kubectl apply -f motopp/k8s -n prod
+
             # 3. Deploy
             kubectl rollout restart deployment/motopp -n prod
             kubectl rollout status deployment/motopp -n prod
