@@ -62,57 +62,29 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
-            # 1. Update Code
+            # 1. Update Code from Git
             cd motopp-final-exam
             git pull origin main
 
-            # 2. RESET DOCKER SERVICE (Fixes glitches from previous disk failures)
-            echo "🔄 Restarting Docker Service..."
-            sudo systemctl restart docker
-            # Wait a few seconds for Docker to wake up
-            sleep 5
+            # 2. Refresh Kubernetes Context
+            # Just to ensure we are talking to the right cluster IP
+            minikube update-context
 
-            # 3. FRESH START (With optimized settings)
-            echo "🧨 Deleting old Minikube cluster..."
-            minikube delete --all
-
-            echo "🚀 Starting fresh Minikube..."
-            # bumped memory to 2200mb (1900mb was too low for K8s v1.34)
-            # removed --force (we want it to warn us if something is truly wrong)
-            minikube start --driver=docker --disk-size=20g --memory=2200mb
-
-            # 4. Setup Namespace & Deploy
-            echo "🛠️ Creating Namespace..."
-            kubectl create namespace prod
-
+            # 3. Apply Configuration Changes
+            # This updates deployments, services, or configmaps if files changed
             echo "🚀 Applying configurations..."
             kubectl apply -f motopp/k8s -n prod
 
-            # 5. Wait for Rollout
-            echo "⏳ Waiting for deployment to be ready..."
-            if ! kubectl rollout status deployment/motopp -n prod --timeout=120s; then
-              echo "❌ Deployment failed."
-              kubectl get pods -n prod
-              kubectl logs -l app=motopp -n prod --all-containers
-              exit 1
-            fi
+            # 4. Rollout Restart
+            # This forces the pods to restart so they pick up the latest code/image
+            echo "🔄 Restarting application pods..."
+            kubectl rollout restart deployment/motopp -n prod
 
-            # 6. SMOKE TEST
-            echo "🧪 Starting Smoke Test..."
-            kubectl port-forward --address 0.0.0.0 service/motopp 30001:30001 -n prod > /dev/null 2>&1 &
-            PF_PID=$!
-            sleep 10
-
-            echo "Testing endpoint http://localhost:30001 ..."
-            if curl --fail --retry 5 --retry-delay 5 http://localhost:30001; then
-              echo "✅ Smoke Test Passed!"
-              kill $PF_PID
-              exit 0
-            else
-              echo "❌ Smoke Test Failed."
-              kill $PF_PID
-              exit 1
-            fi
+            # 5. Wait for Readiness
+            # Ensures the pipeline fails if the new code crashes
+            echo "⏳ Waiting for rollout to complete..."
+            kubectl rollout status deployment/motopp -n prod --timeout=60s
+            
       - name: Post-Deploy Smoke Test
         run: |
           # Simple check to see if the server responds
