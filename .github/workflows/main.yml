@@ -66,33 +66,37 @@ jobs:
             cd motopp-final-exam
             git pull origin main
 
-            # 2. FRESH START (Fixes Disk Space & IP Issues)
+            # 2. CLEANUP HOST DISK SPACE (Vital Step)
+            echo "🧹 Cleaning up host Docker system to free space..."
+            # This deletes stopped containers and unused images on the EC2 host itself
+            docker system prune -a -f --volumes
+
+            # 3. FRESH START
             echo "🧨 Deleting old Minikube cluster..."
             minikube delete --all
 
-            echo "🚀 Starting fresh Minikube (20GB Disk)..."
-            # We explicitly set 20GB to avoid future ImagePullBackOff errors
-            minikube start --driver=docker --disk-size=20g
+            echo "🚀 Starting fresh Minikube..."
+            # I lowered memory to 2200mb because 3072mb was too high for your server
+            minikube start --driver=docker --disk-size=20g --memory=2200mb
 
-            # 3. Setup Namespace & Deploy
+            # 4. Setup Namespace & Deploy
             echo "🛠️ Creating Namespace..."
             kubectl create namespace prod
 
             echo "🚀 Applying configurations..."
             kubectl apply -f motopp/k8s -n prod
 
-            # 4. Wait for Rollout
-            # Since this is a fresh start, we don't need 'rollout restart'
-            # We just need to wait for the new pods to be ready
+            # 5. Wait for Rollout
             echo "⏳ Waiting for deployment to be ready..."
             if ! kubectl rollout status deployment/motopp -n prod --timeout=120s; then
-              echo "❌ Deployment failed to start within 2 minutes."
+              echo "❌ Deployment failed to start."
               echo "🔍 Debugging info:"
               kubectl get pods -n prod
               kubectl describe pods -n prod
+              kubectl logs -l app=motopp -n prod --all-containers
               exit 1
             fi
-            
+
       - name: Post-Deploy Smoke Test
         run: |
           # Simple check to see if the server responds
