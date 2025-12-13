@@ -62,34 +62,41 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
-
+            # 1. Update Code
             cd motopp-final-exam
             git pull origin main
 
-            # 2. AGGRESSIVE SERVER CLEANUP (Run as sudo where possible/needed)
-            echo "🧹 Starting deep cleanup..."
+            # 2. DESPERATE SYSTEM CLEANUP
+            echo "🧹 Starting deep system cleanup..."
 
-            # Remove Minikube cache and config manually (frees ~1-2GB)
-            rm -rf ~/.minikube
-            rm -rf ~/.kube
+            # Clean systemd logs (often frees 500MB+)
+            sudo journalctl --vacuum-time=1s
 
-            # Clean apt cache (frees variable space)
+            # Clean Apt cache
             sudo apt-get clean
+            sudo rm -rf /var/lib/apt/lists/*
 
-            # Prune Docker volumes specifically (often missed by standard prune)
-            docker volume prune -f
+            # Clean Snap cache (often frees 1GB+ on Ubuntu)
+            sudo rm -rf /var/lib/snapd/cache/*
 
-            # Prune everything else in Docker
-            docker system prune -a -f
+            # Clean generic temp files
+            sudo rm -rf /tmp/*
 
-            # Check disk space to verify cleanup
-            echo "💾 Disk usage after cleanup:"
+            # Drop RAM caches to free up memory
+            sudo sysctl -w vm.drop_caches=3
+
+            # Show space status
+            echo "💾 Disk usage after deep clean:"
             df -h /
 
-            # 3. FRESH START
+            # 3. FRESH START (Conservative Mode)
+            echo "🧨 Deleting old Minikube cluster..."
+            minikube delete --all
+
             echo "🚀 Starting fresh Minikube..."
-            # Added --force to try and bypass the check if we are just on the edge of the limit
-            minikube start --driver=docker --disk-size=20g --memory=2200mb --force
+            # Reduced memory to 1900mb to prevent crashing the OS
+            # Added --wait=all to ensure stability before proceeding
+            minikube start --driver=docker --disk-size=20g --memory=1900mb --force --wait=all
 
             # 4. Setup Namespace & Deploy
             echo "🛠️ Creating Namespace..."
@@ -106,7 +113,6 @@ jobs:
               kubectl logs -l app=motopp -n prod --all-containers
               exit 1
             fi
-
       - name: Post-Deploy Smoke Test
         run: |
           # Simple check to see if the server responds
