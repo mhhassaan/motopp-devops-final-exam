@@ -24,7 +24,9 @@ jobs:
 
       - name: Lint with Flake8
         run: |
+          # stop the build if there are Python syntax errors or undefined names
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings.
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
   build-and-push:
@@ -45,7 +47,9 @@ jobs:
         with:
           context: ./motopp
           push: true
+          # START: Update this to match your Docker Hub Username
           tags: ${{ secrets.DOCKER_USERNAME }}/motopp:latest
+          # END
 
   deploy:
     needs: build-and-push
@@ -58,35 +62,19 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            echo "===== DISK USAGE (BEFORE) ====="
-            df -h
-
-            echo "🧹 Cleaning Docker & Minikube..."
-            docker container prune -f
-            docker image prune -af
-            docker volume prune -f
-            docker network prune -f
-
-            minikube delete || true
-            minikube start --driver=docker --memory=2048
-
-            echo "===== DISK USAGE (AFTER) ====="
-            df -h
-
-            echo "📦 Ensuring prod namespace exists..."
-            minikube kubectl -- create namespace prod --dry-run=client -o yaml | \
-            minikube kubectl -- apply -f -
-
-            echo "🚀 Deploying application..."
+            # 1. Pull the latest code (Requires git pull or clone)
             cd motopp-final-exam
             git pull origin main
-            echo "📦 Applying Kubernetes manifests..."
-            cd ./motopp
-            minikube kubectl -- apply -n prod -f k8s/
-
-            minikube kubectl -- rollout restart deployment/motopp -n prod
-            minikube kubectl -- rollout status deployment/motopp -n prod
+            
+            # 2. Update Kubernetes Deployment to force a re-pull of the new image
+            # (We cycle the pods so they pick up the new Docker Hub image)
+            kubectl rollout restart deployment/motopp -n prod
+            
+            # 3. Verify rollout status
+            kubectl rollout status deployment/motopp -n prod
 
       - name: Post-Deploy Smoke Test
         run: |
+          # Simple check to see if the server responds
+          # We use the SSH_HOST secret to target the EC2 IP
           curl -f http://${{ secrets.SSH_HOST }}:30001 || echo "Warning: App might be starting up"
