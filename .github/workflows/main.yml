@@ -85,6 +85,6 @@ jobs:
 
       - name: Post-Deploy Smoke Test
         run: |
-          # Simple check to see if the server responds
-          # We use the SSH_HOST secret to target the EC2 IP
-          curl -f http://${{ secrets.SSH_HOST }}:30001 || echo "W
+          # Retries the connection 5 times, waiting 5 seconds between tries
+          # Fails the job if the server is unreachable
+          curl --fail --retry 5 --retry-delay 5 --retry-connrefused http://${{ secrets.SSH_HOST }}:30001
