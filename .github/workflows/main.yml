@@ -66,37 +66,20 @@ jobs:
             cd motopp-final-exam
             git pull origin main
 
-            # 2. DESPERATE SYSTEM CLEANUP
-            echo "🧹 Starting deep system cleanup..."
+            # 2. RESET DOCKER SERVICE (Fixes glitches from previous disk failures)
+            echo "🔄 Restarting Docker Service..."
+            sudo systemctl restart docker
+            # Wait a few seconds for Docker to wake up
+            sleep 5
 
-            # Clean systemd logs (often frees 500MB+)
-            sudo journalctl --vacuum-time=1s
-
-            # Clean Apt cache
-            sudo apt-get clean
-            sudo rm -rf /var/lib/apt/lists/*
-
-            # Clean Snap cache (often frees 1GB+ on Ubuntu)
-            sudo rm -rf /var/lib/snapd/cache/*
-
-            # Clean generic temp files
-            sudo rm -rf /tmp/*
-
-            # Drop RAM caches to free up memory
-            sudo sysctl -w vm.drop_caches=3
-
-            # Show space status
-            echo "💾 Disk usage after deep clean:"
-            df -h /
-
-            # 3. FRESH START (Conservative Mode)
+            # 3. FRESH START (With optimized settings)
             echo "🧨 Deleting old Minikube cluster..."
             minikube delete --all
 
             echo "🚀 Starting fresh Minikube..."
-            # Reduced memory to 1900mb to prevent crashing the OS
-            # Added --wait=all to ensure stability before proceeding
-            minikube start --driver=docker --disk-size=20g --memory=1900mb --force --wait=all
+            # bumped memory to 2200mb (1900mb was too low for K8s v1.34)
+            # removed --force (we want it to warn us if something is truly wrong)
+            minikube start --driver=docker --disk-size=20g --memory=2200mb
 
             # 4. Setup Namespace & Deploy
             echo "🛠️ Creating Namespace..."
@@ -111,6 +94,23 @@ jobs:
               echo "❌ Deployment failed."
               kubectl get pods -n prod
               kubectl logs -l app=motopp -n prod --all-containers
+              exit 1
+            fi
+
+            # 6. SMOKE TEST
+            echo "🧪 Starting Smoke Test..."
+            kubectl port-forward --address 0.0.0.0 service/motopp 30001:30001 -n prod > /dev/null 2>&1 &
+            PF_PID=$!
+            sleep 10
+
+            echo "Testing endpoint http://localhost:30001 ..."
+            if curl --fail --retry 5 --retry-delay 5 http://localhost:30001; then
+              echo "✅ Smoke Test Passed!"
+              kill $PF_PID
+              exit 0
+            else
+              echo "❌ Smoke Test Failed."
+              kill $PF_PID
               exit 1
             fi
       - name: Post-Deploy Smoke Test
