@@ -62,29 +62,32 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
-            # 1. Update Code from Git
+            # 1. Update Code
             cd motopp-final-exam
             git pull origin main
 
-            # 2. Refresh Kubernetes Context
-            # Just to ensure we are talking to the right cluster IP
+            # 2. Check Cluster Status & Auto-Start
+            # If Minikube is NOT running, start it. Otherwise, do nothing.
+            if ! minikube status | grep -q "Running"; then
+              echo "⚠️ Minikube is down! Starting it now..."
+              minikube start --driver=docker
+            else
+              echo "✅ Minikube is already running."
+            fi
+
+            # 3. Ensure Context is Fresh
+            # Always run this to sync IP addresses in case Docker restarted
             minikube update-context
 
-            # 3. Apply Configuration Changes
-            # This updates deployments, services, or configmaps if files changed
+            # 4. Deploy
             echo "🚀 Applying configurations..."
             kubectl apply -f motopp/k8s -n prod
 
-            # 4. Rollout Restart
-            # This forces the pods to restart so they pick up the latest code/image
-            echo "🔄 Restarting application pods..."
+            # 5. Restart & Verify
+            echo "🔄 Restarting pods..."
             kubectl rollout restart deployment/motopp -n prod
-
-            # 5. Wait for Readiness
-            # Ensures the pipeline fails if the new code crashes
-            echo "⏳ Waiting for rollout to complete..."
             kubectl rollout status deployment/motopp -n prod --timeout=60s
-            
+
       - name: Post-Deploy Smoke Test
         run: |
           # Simple check to see if the server responds
