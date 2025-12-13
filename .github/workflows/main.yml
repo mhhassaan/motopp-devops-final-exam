@@ -66,17 +66,18 @@ jobs:
             cd motopp-final-exam
             git pull origin main
 
-            # 2. Check Cluster Status & Auto-Start
-            # If Minikube is NOT running, start it. Otherwise, do nothing.
-            if ! minikube status | grep -q "Running"; then
-              echo "⚠️ Minikube is down! Starting it now..."
+            # 2. SMART HEALTH CHECK
+            # We check if 'kubectl' works. If it fails (like it is now), we force a repair.
+            echo "🏥 Checking Cluster Health..."
+            if ! kubectl get nodes > /dev/null 2>&1; then
+              echo "⚠️ Cluster is unresponsive (Zombie state). Repairing..."
+              # This restarts the crashed API server without deleting your data
               minikube start --driver=docker
             else
-              echo "✅ Minikube is already running."
+              echo "✅ Cluster is healthy. Skipping restart."
             fi
 
-            # 3. Ensure Context is Fresh
-            # Always run this to sync IP addresses in case Docker restarted
+            # 3. Sync Configuration
             minikube update-context
 
             # 4. Deploy
