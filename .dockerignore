@@ -1,0 +1,27 @@
+# Ignore Virtual Environment (The biggest culprit!)
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore Git History
+.git/
+.gitignore
+
+# Ignore Infrastructure & Terraform
+infra/
+ansible/
+terraform.tfstate
+terraform.tfstate.backup
+
+# Ignore Documentation & Screenshots
+screenshots/
+README.md
+devops_report.md
+*.png
+*.jpg
+
+# Ignore Secrets
+.env
+*.pem
