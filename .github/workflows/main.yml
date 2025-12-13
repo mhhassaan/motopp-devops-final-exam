@@ -55,22 +55,27 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to AWS EC2 via SSH
+      - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
+          username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
-            # 1. Pull the latest code (Requires git pull or clone)
+            # 1. Update Code
             cd motopp-final-exam
             git pull origin main
-            
-            # 2. Update Kubernetes Deployment to force a re-pull of the new image
-            # (We cycle the pods so they pick up the new Docker Hub image)
+
+            # 2. Check if Minikube is running; if not, start it
+            if ! minikube status | grep -q "Running"; then
+              echo "⚠️ Minikube is down! Restarting..."
+              minikube start --driver=docker
+            else
+              echo "✅ Minikube is running."
+            fi
+
+            # 3. Deploy
             kubectl rollout restart deployment/motopp -n prod
-            
-            # 3. Verify rollout status
             kubectl rollout status deployment/motopp -n prod
 
       - name: Post-Deploy Smoke Test
