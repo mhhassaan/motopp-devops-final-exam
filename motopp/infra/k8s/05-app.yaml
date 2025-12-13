@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: motopp
+  namespace: prod
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: motopp
+  template:
+    metadata:
+      labels:
+        app: motopp
+    spec:
+      containers:
+      - name: motopp
+        image: motopp:latest # Matches the local build tag
+        imagePullPolicy: Never # Forces K8s to look locally
+        ports:
+        - containerPort: 5000
+        env:
+        - name: ENV
+          value: "prod"
+        - name: MYSQL_HOST
+          value: "mysql"
+        - name: REDIS_HOST
+          value: "redis"
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: motopp-secrets
+              key: mysql-password
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: motopp-secrets
+              key: secret-key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: motopp-service
+  namespace: prod
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 5000
+    nodePort: 30001 # Access via PublicIP:30001
+  selector:
+    app: motopp
