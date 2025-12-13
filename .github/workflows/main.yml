@@ -72,19 +72,39 @@ jobs:
               minikube start --driver=docker
             else
               echo "✅ Minikube is running. Refreshing context..."
-              # THIS IS THE FIX: Updates the kubeconfig with the current Minikube IP
               minikube update-context
             fi
 
-            echo "🚀 Applying Kubernetes configurations..."
+            # 3. Create Namespace & Apply
+            if ! kubectl get namespace prod > /dev/null 2>&1; then
+              kubectl create namespace prod
+            fi
+            echo "🚀 Applying configurations..."
             kubectl apply -f motopp/k8s -n prod
 
-            # 3. Deploy
+            # 4. Restart Deployment
             kubectl rollout restart deployment/motopp -n prod
             kubectl rollout status deployment/motopp -n prod
+
+            # 5. [THE FIX] Expose Port 30001 to the Host
+            echo "🔌 Starting Port Forwarding..."
+            # Kill any old port-forward processes to avoid conflicts
+            pkill -f "kubectl port-forward" || true
+
+            # Forward traffic from EC2 (0.0.0.0) port 30001 -> Service port 30001
+            # 'nohup' keeps it running in the background
+            nohup kubectl port-forward --address 0.0.0.0 service/motopp 30001:30001 -n prod > /dev/null 2>&1 &
+
+            # Give it 5 seconds to initialize before the smoke test runs
+            sleep 5
 
       - name: Post-Deploy Smoke Test
         run: |
           # Retries the connection 5 times, waiting 5 seconds between tries
           # Fails the job if the server is unreachable
           curl --fail --retry 5 --retry-delay 5 --retry-connrefused http://${{ secrets.SSH_HOST }}:30001
+
+      # - name: Post-Deploy Smoke Test
+      #   run: |
+      #     # Simple check to see if the server responds
+      #     curl -f http://${{ secrets.SSH_HOST }}:30001 || echo "Warning: Server did not respond"
