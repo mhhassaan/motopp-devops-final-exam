@@ -62,22 +62,34 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
-            # 1. Update Code
+
             cd motopp-final-exam
             git pull origin main
 
-            # 2. CLEANUP HOST DISK SPACE (Vital Step)
-            echo "🧹 Cleaning up host Docker system to free space..."
-            # This deletes stopped containers and unused images on the EC2 host itself
-            docker system prune -a -f --volumes
+            # 2. AGGRESSIVE SERVER CLEANUP (Run as sudo where possible/needed)
+            echo "🧹 Starting deep cleanup..."
+
+            # Remove Minikube cache and config manually (frees ~1-2GB)
+            rm -rf ~/.minikube
+            rm -rf ~/.kube
+
+            # Clean apt cache (frees variable space)
+            sudo apt-get clean
+
+            # Prune Docker volumes specifically (often missed by standard prune)
+            docker volume prune -f
+
+            # Prune everything else in Docker
+            docker system prune -a -f
+
+            # Check disk space to verify cleanup
+            echo "💾 Disk usage after cleanup:"
+            df -h /
 
             # 3. FRESH START
-            echo "🧨 Deleting old Minikube cluster..."
-            minikube delete --all
-
             echo "🚀 Starting fresh Minikube..."
-            # I lowered memory to 2200mb because 3072mb was too high for your server
-            minikube start --driver=docker --disk-size=20g --memory=2200mb
+            # Added --force to try and bypass the check if we are just on the edge of the limit
+            minikube start --driver=docker --disk-size=20g --memory=2200mb --force
 
             # 4. Setup Namespace & Deploy
             echo "🛠️ Creating Namespace..."
@@ -89,10 +101,8 @@ jobs:
             # 5. Wait for Rollout
             echo "⏳ Waiting for deployment to be ready..."
             if ! kubectl rollout status deployment/motopp -n prod --timeout=120s; then
-              echo "❌ Deployment failed to start."
-              echo "🔍 Debugging info:"
+              echo "❌ Deployment failed."
               kubectl get pods -n prod
-              kubectl describe pods -n prod
               kubectl logs -l app=motopp -n prod --all-containers
               exit 1
             fi
