@@ -64,11 +64,12 @@ Before running ansible switch to linux terminal (on Windows via WSL).
 ```bash
 cd ansible
 
-ansible-playbook -i inventory.ini playbook.yaml --private-key ~/motopp-lab-exam.pem
+ansible-playbook -i inventory.ini playbook.yaml --private-key ~/motopp.pem
 ```
+ .pem file is obtained by creating key pairs in EC2 instance. It should be in the main directory.
 
+> **Note:** Re-run the same command again if kubectl fails in the first try.
 ---
-> **Note:** Re-run the same command again if kubectl fails in the first try
 ### 3️. Teardown (Cleanup)
 To destroy all AWS resources and avoid billing charges:
 
@@ -141,9 +142,15 @@ kubectl get pods -n monitoring --watch
 ```
 If status is running, then press `Ctrl+C` and access grafana.
 If it is giving ImgPullError, it is most probably due to disk space.
+
+Check the space usage using this command:
+```
+df -h /
+```
 Run following commands and check status again.
 ```
 rm -rf ~/.minikube/cache
+sudo apt-get clean
 
 kubectl delete pod -n monitoring -l app.kubernetes.io/name=grafana pod
 ```
@@ -151,7 +158,7 @@ kubectl delete pod -n monitoring -l app.kubernetes.io/name=grafana pod
 
 Before accessing the Grafana dashboard we need to get the password using the following command:
 ```
-kubectl get secret --namespace monitoring monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echoho
+kubectl get secret --namespace monitoring monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
 ```
 user: `admin`
 password: `<text from above command>`
@@ -159,6 +166,11 @@ password: `<text from above command>`
 ```bash
 
 kubectl port-forward svc/monitoring-grafana 8080:80 -n monitoring
+```
+
+Then on the local terminal/powershell use this command:
+```
+ssh -i "motopp-lab-exam.pem" -L 3000:localhost:8080 -nNT ubuntu@<ec2_public_ip>
 ```
 
 Then open **http://localhost:3000** in your browser.
