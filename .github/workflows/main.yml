@@ -77,4 +77,4 @@ jobs:
         run: |
           # Simple check to see if the server responds
           # We use the SSH_HOST secret to target the EC2 IP
-          curl -f http://${{ secrets.SSH_HOST }}:30001 || echo "Warning: App might be starting up"
+          curl -f http://${{ secrets.SSH_HOST }}:30001 || echo "W
