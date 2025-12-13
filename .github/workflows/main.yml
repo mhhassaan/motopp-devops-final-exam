@@ -80,6 +80,8 @@ jobs:
             echo "🚀 Deploying application..."
             cd motopp-final-exam
             git pull origin main
+            echo "📦 Applying Kubernetes manifests..."
+            minikube kubectl -- apply -n prod -f k8s/
 
             minikube kubectl -- rollout restart deployment/motopp -n prod
             minikube kubectl -- rollout status deployment/motopp -n prod
