@@ -81,6 +81,7 @@ jobs:
             cd motopp-final-exam
             git pull origin main
             echo "📦 Applying Kubernetes manifests..."
+            cd ./motopp
             minikube kubectl -- apply -n prod -f k8s/
 
             minikube kubectl -- rollout restart deployment/motopp -n prod
