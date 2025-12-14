@@ -101,7 +101,7 @@ data "aws_ami" "ubuntu" {
 
 resource "aws_instance" "k8s_node" {
   ami           = data.aws_ami.ubuntu.id
-  instance_type = "t3.medium" # 2 vCPU, 4GB RAM (Minikube Minimum)
+  instance_type = "m7i-flex.large" # 2 vCPU, 4GB RAM (Minikube Minimum)
   subnet_id     = aws_subnet.motopp_subnet.id
   vpc_security_group_ids = [aws_security_group.allow_traffic.id]
   key_name      = "motopp-lab-exam" 
