@@ -34,17 +34,12 @@ docker compose up --build
 
 ---
 
-
-## Infrastructure Setup & Teardown
-
-### 1. Infrastructure Provisioning (Terraform)
+### 2. Run on AWS via Terraform
 Terraform is used to provision AWS infrastructure such as **VPC** and **EC2** instances.
 
 ```bash
 cd infra
 terraform init
-terraform plan
-
 terraform apply -auto-approve
 ```
 
@@ -52,7 +47,7 @@ terraform apply -auto-approve
 
 ---
 
-### 2️. Configuration Management (Ansible)
+#### Configuration Management (Ansible)
 Ansible installs **Docker**, **Minikube**, and **kubectl** on the EC2 instance.
 > **Note:** Update inventory.ini with the`ec2_public_ip` as follow.
 ```
@@ -68,39 +63,39 @@ ansible-playbook -i inventory.ini playbook.yaml --private-key ~/motopp.pem
 ```
  .pem file is obtained by creating key pairs in EC2 instance. It should be in the main directory.
 
-> **Note:** Re-run the same command again if kubectl fails in the first try.
----
-### 3️. Teardown (Cleanup)
-To destroy all AWS resources and avoid billing charges:
 
-```bash
-cd infra
-terraform destroy -auto-approve
-```
-> This will destroy both EC2 & S3 instances, to run the pipeline again, change ec2_public_ip again after running terraform apply command in Step 2.
 ---
+
 
 ## CI/CD Pipeline
 The project uses **GitHub Actions** for a fully automated CI/CD pipeline.
 
-To deploy the app on our remote server we clone this github repo on it.
-
-##### 1. SSH into the remote server using command in the same directory as of `.pem` file:
+To run the workflow pipeline simply push to github repo:
 ```
-ssh -i "motopp-lab-exam.pem" ubuntu@<ec2_public_ip>
-```
-##### 2. Clone the repo:
-```
-git clone https://github.com/mhhassaan/motopp-devops-final-exam.git motopp-final-exam
-```
-##### 3. CD to motopp directory and apply K8s manifers
-```
-cd ./motopp-final-exam/motopp
-kubectl apply -f k8s/
+git add .
+git push commit -m "made changes"
+git push -u origin main
 ```
 ---
 
-If the CI/CD pipeline fails, change SSH_Host with the current `ec2_public_ip` from Step 2 and retry.
+If the CI/CD pipeline fails, check if SSH_Host is updated with the current `ec2_public_ip` from Step 2. 
+##### OR
+SSH into the server:
+```
+ssh -i "motopp-lab-exam.pem" ubuntu@<ec2_public_ip>
+```
+and use following commands:
+```
+kubectl get pods -n prod –watch
+#to see status of pods, if they are failing or are showing error
+```
+```
+minikube stop
+minikube start --driver=docker --memory=6000mb
+```
+
+Then open **http://e2_public_ip:30001** in your browser to access the app.
+
 
 ## Monitoring
 The monitoring stack includes **Prometheus** and **Grafana**.
@@ -111,78 +106,31 @@ The monitoring stack includes **Prometheus** and **Grafana**.
   - Memory usage
   - Network I/O
 
-### Downloading Prometheus & Grafana
+### Getting Grafana Password
 
 #####  1. SSH into the server
 ```
 ssh -i "motopp-lab-exam.pem" ubuntu@<ec2_public_ip>
-```
-Make sure to run this command in the same directory where `.pem` file is located.
-
-#####  2. Install
-```
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
-
-# Install (Minimal Config)
-helm install monitoring prometheus-community/kube-prometheus-stack -n monitoring \
-  --create-namespace \
-  --set alertmanager.enabled=false \
-  --set nodeExporter.enabled=false \
-  --set prometheus.prometheusSpec.resources.requests.cpu=10m \
-  --set prometheus.prometheusSpec.resources.requests.memory=50Mi \
-  --set grafana.resources.requests.cpu=10m \
-  --set grafana.resources.requests.memory=50Mi
+#same folder as of *.pem file
 ```
 
-##### 3. Check status of grafana container.
+#####  2. Print out password
 ```
-kubectl get pods -n monitoring --watch
-```
-If status is running, then press `Ctrl+C` and access grafana.
-If it is giving ImgPullError, it is most probably due to disk space.
-
-Check the space usage using this command:
-```
-df -h /
-```
-Run following commands and check status again.
-```
-rm -rf ~/.minikube/cache
-sudo apt-get clean
-
-kubectl delete pod -n monitoring -l app.kubernetes.io/name=grafana pod
-```
-### Access Grafana
-
-Before accessing the Grafana dashboard we need to get the password using the following command:
-```
-kubectl get secret --namespace monitoring monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+kubectl get secret --namespace monitoring monitor-stack-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
 ```
 user: `admin`
 password: `<text from above command>`
 
-```bash
-
-kubectl port-forward svc/monitoring-grafana 8080:80 -n monitoring
-```
-
-Then on the local terminal/powershell use this command:
-```
-ssh -i "motopp-lab-exam.pem" -L 3000:localhost:8080 -nNT ubuntu@<ec2_public_ip>
-```
-
-Then open **http://localhost:3000** in your browser.
+Then open **http://e2_public_ip:30002** in your browser to access grafana.
 
 ---
 
+### 3️. Teardown (Cleanup)
+To destroy all AWS resources:
 
-### Final Teardown
-
-To destroy all instances simply run the following command:
-
-```
+```bash
 cd infra
-terraform destroy
+terraform destroy -auto-approve
 ```
+> **Note:** This will destroy both EC2 & S3 instances, to run the pipeline again, change ec2_public_ip again after running terraform apply command in Step 2.
+---

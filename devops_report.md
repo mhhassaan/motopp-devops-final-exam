@@ -47,13 +47,13 @@ Terraform was used to provision a custom **VPC** and an **EC2 instance** acting 
 ## 3. Deployment & Configuration
 
 ### Ansible Configuration
-Ansible was used to automate the installation of **Docker**, **Minikube**, and **kubectl** on the raw EC2 instance.
+Ansible was used to automate the installation of **Docker**, **Minikube**, and **kubectl** on the raw EC2 instance. The configuration was updated to ensure Minikube starts with 6000MB of RAM to prevent OOM errors.
 
 - **Screenshot:** Ansible Playbook Success  
   ![Ansible Success](./screenshots/ansible_playbook_run.png)
 
 ### Kubernetes Deployment
-The application was deployed into the `prod` namespace with separate services for **MySQL** and **Redis**.
+The application was deployed into the prod namespace with separate services for `MySQL` and `Redis`. A critical step involved ensuring the application's Kubernetes Service targetPort matched the Python application's actual listening port (5000).
 
 - **Screenshot:** Pods and Services (`kubectl get pods`, `kubectl get svc`)  
   ![Kubernetes Pods](./screenshots/kubernetes_services.png)
@@ -64,7 +64,7 @@ The application was deployed into the `prod` namespace with separate services fo
 ---
 
 ## 4. CI/CD Pipeline Strategy
-The CI/CD pipeline is defined in `.github/workflows/main.yml` and consists of three main stages:
+The CI/CD pipeline is defined in `.github/workflows/main.yml` and consists of four main stages. A crucial deployment strategy was implemented to handle race conditions and resource stability.
 
 1. **Build & Test**  
    - Installs Python dependencies
@@ -74,9 +74,14 @@ The CI/CD pipeline is defined in `.github/workflows/main.yml` and consists of th
    - Authenticates with Docker Hub using GitHub Secrets
    - Builds and pushes the tagged Docker image
 
-3. **Deploy**  
+3. **Terraform Provisioning** 
+   - Runs `terraform init` and `terraform validate` against `motopp/infra` to check configuration syntax and provider stability.
+4. **Deploy**  
    - Connects to the AWS EC2 instance via SSH
    - Triggers a `kubectl rollout restart` to update the running application
+   - **Critical Fix:** Includes an explicit `minikube stop` and `minikube start --memory=6000mb` to guarantee resource availability on every push.
+   - Triggers a `kubectl rollout restart` to update the running application
+   - The **Smoke Test** was made more resilient by implementing `curl --retry 5 --retry-delay 5` to wait for application startup stability.
 
 - **Screenshot:** GitHub Actions Successful Pipeline  
   ![Pipeline Success](./screenshots/ci_cd.png)
@@ -98,7 +103,7 @@ To prevent hardcoding sensitive data (which results in mark deductions), a multi
   - No secrets stored directly in `.tf` files
 
 - **CI/CD Pipeline**  
-  - GitHub Repository Secrets such as `DOCKER_PASSWORD` and `SSH_KEY`
+  - GitHub Repository Secrets such as `DOCKER_PASSWORD`,`SSH_KEY` & `SSH_HOST`
 
 - **Production (Kubernetes)**  
   - Kubernetes Secrets (`k8s/02-secrets.yaml`) mounted into pods at runtime
@@ -115,7 +120,8 @@ Prometheus and Grafana were deployed (via Helm) to monitor cluster health and pe
 Secure access was achieved using SSH tunneling:
 
 ```bash
-ssh -i motopp-lab-exam.pem -L 3000:localhost:30707 ubuntu@<EC2_PUBLIC_IP>
+nohup kubectl port-forward --address 0.0.0.0 service/monitor-stack-grafana 30002:80 -n monitoring > grafana.log 2>&1 &
+# Access via browser: http://<EC2_PUBLIC_IP>:30002
 ```
 
 - **Screenshot:** Grafana Dashboard (CPU & Memory Usage)  
@@ -124,20 +130,29 @@ ssh -i motopp-lab-exam.pem -L 3000:localhost:30707 ubuntu@<EC2_PUBLIC_IP>
 ---
 
 ## 7. Lessons Learned
-Throughout the implementation, several real-world DevOps challenges were encountered and resolved:
-
-### Resource Constraints (t3.medium)
-- **Issue:** EC2 instance ran out of disk space when pulling large monitoring images
-- **Solution:** Disabled heavy components (AlertManager, NodeExporter) and cleaned Minikube caches
-
-### Networking & Firewalls
-- **Issue:** Grafana access via NodePort failed due to AWS Security Group restrictions
-- **Solution:** Implemented SSH tunneling to securely forward internal ports to localhost
+Throughout the implementation, several real-world DevOps challenges were encountered and resolved. These issues required systematic debugging, infrastructure tuning, and pipeline hardening, demonstrating resilience and practical problem-solving skills expected in real production environments.
 
 ### Docker Build Context
 - **Issue:** Docker build failed because files could not be located during `COPY`
 - **Solution:** Adjusted the build context to the `motopp/` directory
 
+### Network Debugging & Connection Refusal
+- **Issue:** The smoke test failed repeatedly with a misleading error: `Connection refused and Unhandled Error err="an error occurred forwarding 30001 -> 5000: ... Connection refused`
+- **Diagnosis:** This error initially suggested an incorrect port (5000 vs. 8000) or a firewall. However, deep log inspection revealed the root cause: the application container was dying/crashing before the port-forwarding could connect to the live process.
+- **Solution:** The resolution was not a network fix, but a resource fix (fixing the OOM on MySQL) that allowed the application to start and survive, thereby making the port-forwarding successful.
+
+
+### Critical Fix: Out of Memory (OOM) Errors
+- **Issue:** MySQL and monitoring pods repeatedly crashed (`OOMKilled` / `CrashLoopBackOff`) because the default Minikube memory allocation (~2.2 GB) was insufficient for the full stack.
+- **Solution:** Upgraded the EC2 instance size and permanently configured Minikube memory to **6000 MB** in both the **Ansible playbook** and the **GitHub Actions deployment script**.
+
+### Application Race Conditions
+- **Issue:** The application pod crashed on startup with `sqlalchemy.exc.OperationalError: Can't connect to MySQL` due to the application starting before the database became ready.
+- **Solution:** Modified the deployment process to wait for database stabilization and enforced a controlled `kubectl rollout restart` of the application.
+
+### Smoke Test Instability
+- **Issue:** Smoke tests failed with `Empty reply from server` because the application initialization time exceeded a static sleep delay.
+- **Solution:** Replaced static delays with a dynamic retry mechanism using `curl --retry 5 --retry-delay 5`, ensuring reliable readiness checks.
 ---
 
 ## 8. Final Cleanup
