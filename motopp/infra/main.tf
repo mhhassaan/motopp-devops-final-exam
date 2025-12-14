@@ -133,7 +133,7 @@ resource "aws_instance" "k8s_node" {
 
               # Start Minikube (as ubuntu user)
               # We use 'su' because user_data runs as root
-              su - ubuntu -c "minikube start --driver=docker --memory=2200mb"
+              su - ubuntu -c "minikube start --driver=docker --memory=6000mb"
               EOF
 
   tags = {

@@ -188,3 +188,14 @@ jobs:
             # Expose Grafana
             sudo fuser -k 30002/tcp || true
             nohup kubectl port-forward --address 0.0.0.0 service/monitor-stack-grafana 30002:80 -n monitoring > grafana.log 2>&1 &
+
+            # GET CREDENTIALS
+            # We use 'base64 --decode' to turn the secret into readable text
+            GRAFANA_PASS=$(kubectl get secret --namespace monitoring monitor-stack-grafana -o jsonpath="{.data.admin-password}" | base64 --decode)
+
+            echo "=================================================="
+            echo "📊 Grafana Dashboard Credentials:"
+            echo "   -> URL: http://${{ secrets.SSH_HOST }}:30002"
+            echo "   -> User: admin"
+            echo "   -> Pass: $GRAFANA_PASS"  <-- This line prints it to the GitHub logs
+            echo "=================================================="

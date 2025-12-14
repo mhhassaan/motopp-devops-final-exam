@@ -52,5 +52,5 @@
     - name: Start Minikube (Safe Mode)
       become_user: ubuntu
       # CRITICAL FIX: Added --memory=2200mb to prevent server crash
-      shell: minikube start --driver=docker --memory=2200mb
+      shell: minikube start --driver=docker --memory=6000mb
       when: "'Running' not in minikube_status.stdout"
