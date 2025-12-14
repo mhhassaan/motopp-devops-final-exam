@@ -147,7 +147,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
-            echo "📊 Setting up Monitoring Stack (Grafana + Prometheus)..."
+            echo "📊 Setting up Monitoring Stack..."
 
             # 1. Install Helm if missing
             if ! command -v helm &> /dev/null; then
@@ -155,26 +155,28 @@ jobs:
                 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
             fi
 
-            # 2. Add Prometheus Community Repo
+            # 2. Add Repo & Install
             helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
             helm repo update
             
-            # 3. Smart Install: Check if already installed
             if helm status monitor-stack -n monitoring > /dev/null 2>&1; then
-                echo "✅ Monitoring stack is ALREADY installed. Skipping installation."
+                echo "✅ Monitoring stack already installed."
             else
-                echo "⚠️ Monitoring stack missing. Installing now..."
+                echo "⚠️ Installing Monitoring Stack (this may take a minute)..."
                 kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
                 
-                # Install kube-prometheus-stack
-                # - 'nodeExporter.enabled=true': Collects CPU/Memory metrics (Requirements satisfied)
-                # - 'alertmanager.enabled=false': Saves RAM
+                # Install with memory limits to prevent server crash
                 helm install monitor-stack prometheus-community/kube-prometheus-stack \
                   --namespace monitoring \
                   --set alertmanager.enabled=false \
                   --set grafana.persistence.enabled=false \
                   --set prometheus.prometheusSpec.resources.requests.memory=256Mi
             fi
+
+            # 3. CRITICAL FIX: Wait for Grafana to be Ready
+            # This pauses the script until the pods are actually running
+            echo "⏳ Waiting for Grafana to start..."
+            kubectl rollout status deployment/monitor-stack-grafana -n monitoring --timeout=120s
 
             # 4. EXPOSE SERVICES (Port Forwarding)
             echo "🔌 Bridging Monitoring Ports..."
@@ -189,19 +191,16 @@ jobs:
             
             # Start Prometheus Tunnel (Host:30003 -> Pod:9090)
             nohup kubectl port-forward --address 0.0.0.0 service/monitor-stack-kube-prometheus-prometheus 30003:9090 -n monitoring > prometheus.log 2>&1 &
+            
+            # Allow tunnels to stabilize
+            sleep 5
 
-            # 5. RETRIEVE LOGIN CREDENTIALS
-            # Grafana creates a random password on install; we must fetch it.
+            # 5. GET CREDENTIALS
             GRAFANA_PASS=$(kubectl get secret --namespace monitoring monitor-stack-grafana -o jsonpath="{.data.admin-password}" | base64 --decode)
 
             echo "=================================================="
-            echo "✅ MONITORING SETUP COMPLETE"
-            echo "=================================================="
-            echo "📊 Grafana Dashboard (Visuals):"
+            echo "📊 Grafana Dashboard:"
             echo "   -> URL: http://${{ secrets.SSH_HOST }}:30002"
             echo "   -> User: admin"
-            echo "   -> Password: $GRAFANA_PASS"
-            echo "--------------------------------------------------"
-            echo "📈 Prometheus (Metrics Source):"
-            echo "   -> URL: http://${{ secrets.SSH_HOST }}:30003"
+            echo "   -> Pass: $GRAFANA_PASS"
             echo "=================================================="
