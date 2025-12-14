@@ -116,29 +116,26 @@ jobs:
           script: |
             echo "🔌 Setting up Network Bridge..."
 
-            # 1. CLEANUP: Kill any OLD port-forwards from previous runs
-            # This prevents "Address already in use" errors
-            pkill -f "kubectl port-forward" || true
+            # 1. SAFER CLEANUP: Kill process by PORT (30001), not by name
+            # This prevents the script from killing itself
+            sudo fuser -k 30001/tcp || true
             sleep 2
 
             # 2. START PERMANENT FORWARD
             # Maps Host:30001 -> Service:80
-            # 'nohup' ensures it keeps running after this step finishes
             nohup kubectl port-forward --address 0.0.0.0 service/motopp 30001:80 -n prod > pf.log 2>&1 &
             
             echo "   -> Bridge created. Waiting 5s for stability..."
             sleep 5
 
             # 3. SMOKE TEST
-            # We verify the connection works right now
             if curl --fail --retry 3 --retry-delay 2 http://localhost:30001; then
               echo "✅ Smoke Test Passed: App is live!"
-              # We EXIT successfully and LEAVE the port-forward running
               exit 0
             else
               echo "❌ Smoke Test Failed."
               cat pf.log
-              # If it failed, we kill the broken process to be clean
-              pkill -f "kubectl port-forward"
+              # Cleanup on failure only
+              sudo fuser -k 30001/tcp || true
               exit 1
             fi
