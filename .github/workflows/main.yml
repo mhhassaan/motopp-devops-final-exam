@@ -104,7 +104,7 @@ jobs:
             # 2. Health Check
             if ! kubectl get nodes > /dev/null 2>&1; then
               echo "⚠️ Starting Minikube..."
-              minikube start --driver=docker --memory=2200mb
+              minikube start --driver=docker --memory=6000mb
             fi
             minikube update-context
 
