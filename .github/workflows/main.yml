@@ -126,7 +126,7 @@ jobs:
             nohup kubectl port-forward --address 0.0.0.0 service/motopp 30001:80 -n prod > pf.log 2>&1 &
             
             echo "   -> Bridge created. Waiting 5s for stability..."
-            sleep 5
+            sleep 10
 
             # 3. SMOKE TEST
             if curl --fail --retry 3 --retry-delay 2 http://localhost:30001; then
@@ -162,15 +162,18 @@ jobs:
             if helm status monitor-stack -n monitoring > /dev/null 2>&1; then
                 echo "✅ Monitoring stack already installed."
             else
-                echo "⚠️ Installing Monitoring Stack (this may take a minute)..."
+                echo "⚠️ Installing Monitoring Stack..."
                 kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
                 
-                # Install with memory limits to prevent server crash
+                # CRITICAL: These settings prevent your 4GB server from crashing!
                 helm install monitor-stack prometheus-community/kube-prometheus-stack \
                   --namespace monitoring \
                   --set alertmanager.enabled=false \
                   --set grafana.persistence.enabled=false \
-                  --set prometheus.prometheusSpec.resources.requests.memory=256Mi
+                  --set prometheus.prometheusSpec.resources.requests.memory=100Mi \
+                  --set prometheus.prometheusSpec.resources.limits.memory=256Mi \
+                  --set grafana.resources.requests.memory=64Mi \
+                  --set grafana.resources.limits.memory=128Mi
             fi
 
             # 3. CRITICAL FIX: Wait for Grafana to be Ready
