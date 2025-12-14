@@ -125,8 +125,8 @@ jobs:
             # Maps Host:30001 -> Service:80
             nohup kubectl port-forward --address 0.0.0.0 service/motopp 30001:80 -n prod > pf.log 2>&1 &
             
-            echo "   -> Bridge created. Waiting 5s for stability..."
-            sleep 10
+            echo "   -> Bridge created. Waiting 30s for stability..."
+            sleep 30
 
             # 3. SMOKE TEST
             if curl --fail --retry 3 --retry-delay 2 http://localhost:30001; then
