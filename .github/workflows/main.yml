@@ -59,7 +59,7 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to EC2
+      - name: Deploy to Minikube
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -72,35 +72,30 @@ jobs:
               cd motopp-final-exam
               git pull origin main
             else
-              echo "clone Repo missing. Cloning now..."
-              # Using the HTTPS URL from your logs
+              echo "📂 Repo missing. Cloning now..."
               git clone https://github.com/mhhassaan/motopp-devops-final-exam.git motopp-final-exam
               cd motopp-final-exam
             fi
 
-            # 2. SMART HEALTH CHECK & STARTUP
-            # Checks if cluster is running. If not (fresh server), starts it with safe memory limits.
+            # 2. SMART HEALTH CHECK
             echo "🏥 Checking Cluster Health..."
             if ! kubectl get nodes > /dev/null 2>&1; then
               echo "⚠️ Cluster is unresponsive or new. Starting Minikube..."
-              # Using 2200mb to stay within t3.medium limits
               minikube start --driver=docker --memory=2200mb
             else
               echo "✅ Cluster is healthy."
             fi
-
+            
             # 3. Sync Configuration
             minikube update-context
 
-            # 4. Create Namespace (Critical for Fresh Server)
-            # Fails silently if namespace already exists
+            # 4. Create Namespace & Deploy
             kubectl create namespace prod --dry-run=client -o yaml | kubectl apply -f -
-
-            # 5. Deploy Resources
+            
             echo "🚀 Applying configurations..."
             kubectl apply -f motopp/k8s -n prod
 
-            # 6. Restart & Verify
+            # 5. Restart & Wait
             echo "🔄 Restarting pods..."
             kubectl rollout restart deployment/motopp -n prod
             
@@ -110,33 +105,40 @@ jobs:
               kubectl logs -l app=motopp -n prod --tail=20
               exit 1
             fi
+            echo "✅ Deployment Successful!"
 
-            # 7. INTEGRATED SMOKE TEST
-            echo "🧪 Starting Smoke Test..."
-            
-            # FIX: Mapping Host Port 30001 -> Service Port 80
+      - name: Expose App & Smoke Test
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            echo "🔌 Setting up Network Bridge..."
+
+            # 1. CLEANUP: Kill any OLD port-forwards from previous runs
+            # This prevents "Address already in use" errors
+            pkill -f "kubectl port-forward" || true
+            sleep 2
+
+            # 2. START PERMANENT FORWARD
+            # Maps Host:30001 -> Service:80
+            # 'nohup' ensures it keeps running after this step finishes
             nohup kubectl port-forward --address 0.0.0.0 service/motopp 30001:80 -n prod > pf.log 2>&1 &
-            PF_PID=$!
             
-            echo "   -> Port Forward PID: $PF_PID"
-            echo "   -> Waiting 10s for connection..."
-            sleep 10
+            echo "   -> Bridge created. Waiting 5s for stability..."
+            sleep 5
 
-            # Check if process is still alive
-            if ! kill -0 $PF_PID > /dev/null 2>&1; then
-                echo "❌ CRITICAL: Port-forward died!"
-                cat pf.log
-                exit 1
-            fi
-
-            # Test Connection
+            # 3. SMOKE TEST
+            # We verify the connection works right now
             if curl --fail --retry 3 --retry-delay 2 http://localhost:30001; then
-              echo "✅ Smoke Test Passed: App is reachable!"
-              kill $PF_PID
+              echo "✅ Smoke Test Passed: App is live!"
+              # We EXIT successfully and LEAVE the port-forward running
               exit 0
             else
               echo "❌ Smoke Test Failed."
               cat pf.log
-              kill $PF_PID
+              # If it failed, we kill the broken process to be clean
+              pkill -f "kubectl port-forward"
               exit 1
             fi
