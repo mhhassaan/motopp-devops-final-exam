@@ -87,7 +87,7 @@ To deploy the app on our remote server we clone this github repo on it.
 
 ##### 1. SSH into the remote server using command in the same directory as of `.pem` file:
 ```
-ssh -i "motopp-lab-exam.pem" ubuntu@9<ec2_public_ip>
+ssh -i "motopp-lab-exam.pem" ubuntu@<ec2_public_ip>
 ```
 ##### 2. Clone the repo:
 ```
